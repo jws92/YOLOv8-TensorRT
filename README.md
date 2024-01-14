@@ -1,11 +1,11 @@
 # TensorRT Conversion for YOLOv8
-Simple implementation of conversion from PyTorch models to TensorRT engines for **YOLOv8**.
+Simple *Python* implementation of conversion from PyTorch models to TensorRT engines for **YOLOv8**.
 
 ## Simple Summary
 To convert PyTorch models to TensorRT engines, we will follow some procedures below:   
 * **PyTorch** to **ONNX**
 * **ONNX** to **TensorRT**
-* We target **YOLOv8-det** models inclduing `N`, `S`, `M`, `L`, and `X`.
+* We support **all of the tasks** of YOLOv8 models inclduing `N`, `S`, `M`, `L`, and `X`.
 * We can easily convert models to the optimized engines with **FP16** or **INT8**, by using some codes in `src/`.
 
 ## Preparation
@@ -14,7 +14,7 @@ To convert PyTorch models to TensorRT engines, we will follow some procedures be
   ```bash
   wget http://images.cocodataset.org/zips/val2017.zip
   ```
-* All of the model weights of YOLOv8-det can be downloaded at [YOLOv8 official repo](https://github.com/ultralytics/ultralytics?tab=readme-ov-file).
+* All of the model weights of YOLOv8 can be downloaded at [YOLOv8 official repo](https://github.com/ultralytics/ultralytics?tab=readme-ov-file).
 
 ## Experimental Environments
 * OS - Ubuntu 20.04 (of WSL 2 in Windows 11)
@@ -30,10 +30,10 @@ To convert PyTorch models to TensorRT engines, we will follow some procedures be
 * We first convert the PyTorch models to ONNX graphs with a simple code provided by [YOLOv8](https://github.com/ultralytics/ultralytics)
 ```bash
 # base
-python export_onnx.py --path /PATH/TO/WEIGHT --imgsz 640
+python export_onnx.py --weight_path /PATH/TO/WEIGHT --imgsz 640
 
 # example: yolov8n
-python export_onnx.py --path./weights/yolov8n.pt --imgsz 640
+python export_onnx.py --weight_path ./weights/yolov8n.pt --imgsz 640
 
 # ==> out: ./weight/yolov8n.onnx
 ```
@@ -63,7 +63,8 @@ python export_onnx.py --path./weights/yolov8n.pt --imgsz 640
                      --int8 \
                      --calib_img_path /PATH/TO/IMG_DATA_PATH \
                      --calib_cache /PATH/TO/CALIB_CACHE \
-                     --calib_batch_size /PATH/TO/CALIB_BATCH_SIZE
+                     --calib_batch_size /PATH/TO/CALIB_BATCH_SIZE \
+                     --workspace 4
 
   # example: yolov8n.onnx,
   # calibration dataset: COCO - val2017
@@ -72,7 +73,8 @@ python export_onnx.py --path./weights/yolov8n.pt --imgsz 640
                      --int8 \
                      --calib_img_path ./val2017 \
                      --calib_cache ./caches/calib.cache \
-                     --calib_batch_size 8
+                     --calib_batch_size 8 \
+                     --workspace 10
 
   # ==> out: ./caches/calib.cache
   #          ./weight/yolov8n_int8.engine
@@ -84,28 +86,40 @@ python export_onnx.py --path./weights/yolov8n.pt --imgsz 640
   * Although one of the fastest is INT8, it could not have dramatic difference with FP16.
     * It could be considered that some latency bottleneck may occur due to using NMS with native PyTorch, not TensorRT plugins.
 
+* ***Detection***
+
 |Frameworks|          N|             S|             M|              L|              X|
 |:---------|         -:|            -:|            -:|             -:|             -:|
-|PyTorch|     15.81 (-)|     16.77 (-)|     15.89 (-)|      22.33 (-)|      27.22 (-)|
-|TRT-FP16|6.72 (+57.5%)| 8.16 (+51.3%)| 8.48 (+46.6%)| 10.71 (+52.0%)| 14.83 (+45.5%)|
-|TRT-INT8|5.70 (+15.2%)| 6.09 (+25.4%)|  7.83 (+7.7%)|  8.88 (+17.1%)| 11.61 (+21.7%)|
+|PyTorch|     12.36 (-)|     14.43 (-)|     13.99 (-)|      19.67 (-)|      21.54 (-)|
+|TRT-FP16|5.39 (+56.4%)| 6.35 (+56.0%)| 9.56 (+31.9%)| 10.97 (+44.2%)| 14.33 (+33.5%)|
+|TRT-INT8|4.83 (+10.4%)| 4.95 (+22.0%)|  6.35 (+33.6%)|  9.34 (+14.9%)| 8.97 (+37.4%)|
+
+* ***Pose***
+
+|Frameworks|          N|             S|             M|              L|              X|
+|:---------|         -:|            -:|            -:|             -:|             -:|
+|PyTorch|     14.39 (-)|     14.35 (-)|     17.95 (-)|      19.53 (-)|      22.97 (-)|
+|TRT-FP16|5.33 (+63.0%)| 6.33 (+55.9%)| 10.81 (+39.8%)| 11.24 (+42.4%)| 14.35 (+37.5%)|
+|TRT-INT8|5.83 (-8.6%)| 5.54 (+12.5%)|  7.13 (+34.0%)|  7.52 (+33.1%)| 10.29 (+28.3%)|
+
+* ***Segmentation***
+
+|Frameworks|          N|             S|             M|              L|              X|
+|:---------|         -:|            -:|            -:|             -:|             -:|
+|PyTorch|     16.51 (-)|     17.96 (-)|     19.50 (-)|      22.35 (-)|      32.02 (-)|
+|TRT-FP16|7.67 (+53.5%)| 8.42 (+53.1%)| 11.59 (+40.6%)| 14.40 (+35.6%)| 18.56 (+42.0%)|
+|TRT-INT8|7.01 (+8.6%)| 8.00 (+5.0%)|  10.14 (+12.5%)|  10.68 (+25.8%)| 14.96 (+19.4%)|
 
 * Qualitative analysis
   * IoU and confidence thresholds were set to 0.5, respectively.
   * We only analyzed the result of each engine for `bus.jpg`, and we confirmed that native PyTorch and FP16 engine was almost the same result. 
   * The results of INT8 engine had a false negative in the `bus.jpg` compared to others, but its performance was also good.
 
-|Models|PyTorch|TRT-FP16|TRT-INT8|
-|:----:|:-----:|:------:|:------:|
-|N|<img src=./trt_res_imgs/n/yolov8n_yolov8n_res.jpg width="202.5" height="207">|<img src=./trt_res_imgs/n/yolov8n_fp16_yolov8n_fp16_res.jpg width="202.5" height="207">|<img src=./trt_res_imgs/n/yolov8n_int8_yolov8n_int8_res.jpg width="202.5" height="207">|
-|S|<img src=./trt_res_imgs/s/yolov8s_yolov8s_res.jpg width="202.5" height="207">|<img src=./trt_res_imgs/s/yolov8s_fp16_yolov8s_fp16_res.jpg width="202.5" height="207">|<img src=./trt_res_imgs/s/yolov8s_int8_yolov8s_int8_res.jpg width="202.5" height="207">|
-|M|<img src=./trt_res_imgs/m/yolov8m_yolov8m_res.jpg width="202.5" height="207">|<img src=./trt_res_imgs/m/yolov8m_fp16_yolov8m_fp16_res.jpg width="202.5" height="207">|<img src=./trt_res_imgs/m/yolov8m_int8_yolov8m_int8_res.jpg width="202.5" height="207">|
-|L|<img src=./trt_res_imgs/l/yolov8l_yolov8l_res.jpg width="202.5" height="207">|<img src=./trt_res_imgs/l/yolov8l_fp16_yolov8l_fp16_res.jpg width="202.5" height="207">|<img src=./trt_res_imgs/l/yolov8l_int8_yolov8l_int8_res.jpg width="202.5" height="207">|
-|X|<img src=./trt_res_imgs/x/yolov8x_yolov8x_res.jpg width="202.5" height="207">|<img src=./trt_res_imgs/x/yolov8x_fp16_yolov8x_fp16_res.jpg width="202.5" height="207">|<img src=./trt_res_imgs/x/yolov8x_int8_yolov8x_int8_res.jpg width="202.5" height="207">|
-
 ## TODO
-- [ ] Add classes' names and confidence value on the result image
-- [ ] Add pose module
+- [X] Added classes' names on the result image
+- [X] Added pose modules of both PyTorch and TRT
+- [X] Added segmentation modules of both PyTorch and TRT
+- [X] Added result images from all of the models
 
 ## References
 * Convert ONNX to TensorRT - [LINK](https://github.com/qbxlvnf11/convert-pytorch-onnx-tensorrt/blob/TensorRT-21.08/convert_onnx_to_tensorrt/convert_onnx_to_tensorrt.py)   

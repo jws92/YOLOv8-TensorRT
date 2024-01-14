@@ -42,6 +42,7 @@ class ImageBatcher:
         # Handle Tensor Shape
         self.dtype = dtype
         self.shape = shape
+        self.imgsz = max(shape[-1], shape[-2])
         assert len(self.shape) == 4
         self.batch_size = shape[0]
         assert self.batch_size > 0
@@ -68,25 +69,25 @@ class ImageBatcher:
         self.image_index = 0
         self.batch_index = 0
 
-    # codes from YOLOv8
-    # preprocess:
+    # preprocess codes from YOLOv8
     # https://github.com/ultralytics/ultralytics/blob/38eaf5e29f2a269ee50de659470c91ae44bb23f8/ultralytics/engine/predictor.py#L113
     def preprocess_image(self, image_path):
         
-        def preprocess(im, imgsz=640, half=False):
+        def preprocess(im, imgsz=640, dtype=np.float32):
             def pre_transform(im, imgsz=640):
                 letterbox = LetterBox(imgsz)
                 return [letterbox(image=x) for x in im]
             
             im = pre_transform(im, imgsz)[0]
             im = im[..., ::-1].transpose((2, 0, 1))
-            im = np.ascontiguousarray(im, 
-                                    dtype=np.float32 if not half else np.float16) / 255.0
+            im = np.ascontiguousarray(im, dtype=dtype) / 255.0
             
             return im
         
         img = cv2.imread(image_path)
-        img = preprocess([img])
+        img = preprocess([img], 
+                         imgsz=self.imgsz, 
+                         dtype=self.dtype)
         
         return img
 
